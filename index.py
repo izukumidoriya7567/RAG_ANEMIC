@@ -32,7 +32,7 @@ router.add_middleware(
     allow_origins=["*"],  # or ["http://localhost:3000"]
     allow_credentials=True,
     allow_methods=["*"],  # IMPORTANT: allows OPTIONS
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 # Reads .env file
 class AnemicDiet(BaseModel):
