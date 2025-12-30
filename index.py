@@ -1,5 +1,5 @@
 """
-BM25 just searches for words in the whole document, Semantic search in just like
+BM25 just searches for words in the whole document.
 This system combines BM25 (keyword) and Dense (semantic) search with
 cross-encoder re-ranking for optimal retrieval.
 
@@ -27,6 +27,8 @@ import os
 load_dotenv()
 
 router=FastAPI()
+
+# This setting is added for CORS Issue
 router.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # or ["http://localhost:3000"]
@@ -35,6 +37,7 @@ router.add_middleware(
     allow_headers=["*"]
 )
 # Reads .env file
+
 class AnemicDiet(BaseModel):
     name: str = Field(description="Name of the food item or diet component recommended for anemia")
     iron_content: float = Field(description="Approximate iron content in milligrams (mg) per standard serving")
@@ -62,6 +65,7 @@ class GraphState(TypedDict):
 qdrant_url=os.getenv("QDRANT_URL")
 qdrant_api_key=os.getenv("QDRANT_API_KEY")
 llm_api_key=os.getenv("GROQ_API_KEY")
+
 # INITIALIZE MODELS AND CLIENTS (Global - loaded once)
 cross_encoder_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -437,6 +441,11 @@ def search_and_answer(user_query: str):
     print("Meal_Plan_BM25",result_state["meal_plan_bm25"])
     return result_state
 
+@router.get("/")
+def response():
+    return {
+        "content":"The name's William Butcher, pro in disposing of Shitbag supes."
+    }
 @router.post("/query/")
 def answer(payload:AnemiaPayload):
     question=payload.query
