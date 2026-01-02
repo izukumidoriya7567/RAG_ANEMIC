@@ -7,7 +7,8 @@ Usage:
 1. First run: Automatically builds vocabulary if not found
 2. Subsequent runs: Uses cached vocabulary for fast searches
 """
-from sentence_transformers import SentenceTransformer
+from huggingface_hub import InferenceClient
+import numpy as np
 from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
@@ -67,7 +68,8 @@ qdrant_api_key=os.getenv("QDRANT_API_KEY")
 llm_api_key=os.getenv("GROQ_API_KEY")
 
 # INITIALIZE MODELS AND CLIENTS (Global - loaded once)
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+model_id = "sentence-transformers/all-MiniLM-L6-v2"
+client = InferenceClient(token=os.getenv("HF_TOKEN"))
 qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 
 llm = ChatGroq(
@@ -286,13 +288,21 @@ def meal_plan_dense_node(state: dict):
     print("🔎 DENSE EMBEDDING SEARCH")    
     try:
         # Encode query to dense vector
-        query_vector =embedding_model.encode(query)
+        response = client.feature_extraction(query, model=model_id)
+        embedding = np.array(response)
+
+        # If token embeddings → mean pool
+        if embedding.ndim == 2:
+            embedding = embedding.mean(axis=0)
+
+        # If already sentence embedding → use directly
+        query_vector = embedding.tolist()
         print("✓ Query encoded to dense vector")
-        
+    
         # Search the dense collection
         search_results = qdrant_client.query_points(
             collection_name=DENSE_COLLECTION,
-            query=query_vector,
+            query=embedding,
             limit=10,
             with_payload=True
         ).points
