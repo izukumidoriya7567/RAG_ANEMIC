@@ -429,11 +429,11 @@ workflow_graph.add_edge("bm25_search", "rerank")
 workflow_graph.add_edge("dense_search", "rerank")
 workflow_graph.add_edge("rerank", "generate_answer")
 workflow_graph.set_entry_point("start")
-app = workflow_graph.compile()
+graph_app = workflow_graph.compile()
 
 def search_and_answer(user_query: str):
     print("🚀 STARTING RAG PIPELINE")
-    result_state = app.invoke({
+    result_state = graph_app.invoke({
         "query": user_query
     })
     print("Meal_Plan",result_state["meal_plan_dense"])
