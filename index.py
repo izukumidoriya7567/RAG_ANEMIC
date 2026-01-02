@@ -7,6 +7,7 @@ Usage:
 1. First run: Automatically builds vocabulary if not found
 2. Subsequent runs: Uses cached vocabulary for fast searches
 """
+from fastembed import TextEmbedding
 from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
@@ -16,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph
 from langchain_core.messages import HumanMessage, SystemMessage
-from sentence_transformers import SentenceTransformer, CrossEncoder
 from qdrant_client import QdrantClient
 from qdrant_client.models import SparseVector
 from typing import TypedDict, Optional
@@ -49,7 +49,7 @@ class StructuredOutput(BaseModel):
 class AnemiaPayload(BaseModel):
     query: str
 
-api=FastAPI()
+api = FastAPI()
 DENSE_COLLECTION = "Diet_Stokesy"
 SPARSE_COLLECTION = "Diet_Stokesy_BM25"
 VOCABULARY_FILE = "bm25_vocabulary.pkl"
@@ -67,8 +67,7 @@ qdrant_api_key=os.getenv("QDRANT_API_KEY")
 llm_api_key=os.getenv("GROQ_API_KEY")
 
 # INITIALIZE MODELS AND CLIENTS (Global - loaded once)
-cross_encoder_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model= TextEmbedding("BAAI/bge-small-en-v1.5")
 qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 
 llm = ChatGroq(
@@ -243,17 +242,18 @@ def meal_plan_bm25_node(state: dict):
             collection_name=SPARSE_COLLECTION,
             query=query_sparse_vector,
             using="bm25",
-            limit=5,
+            limit=10,
             with_payload=True
         ).points
         # Extract results
         result_payloads = []
         result_texts = []
-        
+        result_score = []
         for result in search_results:
+            result_score.append(result.score)
             result_payloads.append(result.payload)
             result_texts.append(result.payload.get("text", ""))
-        
+        print("Result_Payload_BM25-:",result_payloads)
         print(f"✓ Found {len(result_payloads)} BM25 results")
         
         if result_texts:
@@ -264,7 +264,8 @@ def meal_plan_bm25_node(state: dict):
         return {
             "meal_plan_bm25": {
                 "list": result_payloads,
-                "sparse_embedding_list": result_texts
+                "sparse_embedding_list": result_texts,
+                "confidence_score_list":result_score
             }
         }
     
@@ -285,25 +286,26 @@ def meal_plan_dense_node(state: dict):
     print("🔎 DENSE EMBEDDING SEARCH")    
     try:
         # Encode query to dense vector
-        query_vector = embedding_model.encode(query).tolist()
+        query_vector =next(embedding_model.embed([query]))
         print("✓ Query encoded to dense vector")
         
         # Search the dense collection
         search_results = qdrant_client.query_points(
             collection_name=DENSE_COLLECTION,
             query=query_vector,
-            limit=5,
+            limit=10,
             with_payload=True
         ).points
         
         # Extract results
         result_payloads = []
         result_texts = []
-        
+        result_score=[]
         for result in search_results:
+            result_score.append(result.score)
             result_payloads.append(result.payload)
             result_texts.append(result.payload.get("text", ""))
-        
+        print("Result_Payload-:",result_payloads)
         print(f"✓ Found {len(result_payloads)} dense embedding results")
         
         if result_texts:
@@ -315,7 +317,8 @@ def meal_plan_dense_node(state: dict):
         return {
             "meal_plan_dense": {
                 "list": result_payloads,
-                "dense_embedding_list": result_texts
+                "dense_embedding_list": result_texts,
+                "confidence_score_list":result_score
             }
         }
     
@@ -337,45 +340,32 @@ def cross_encoder_node(state: dict):
     print("🔄 CROSS-ENCODER RE-RANKING")
     # Get results from both searches
     sparse_texts = state.get("meal_plan_bm25", {}).get("sparse_embedding_list", [])
+    sparse_score = state.get("meal_plan_bm25",{}).get("confidence_score_list", [])
     dense_texts = state.get("meal_plan_dense", {}).get("dense_embedding_list", [])
-    
-    # Combine and deduplicate
-    all_texts = list(set(sparse_texts + dense_texts))
-    
-    if not all_texts:
-        print("⚠️  No texts to re-rank")
-        return {
-            "cross_encoder_results": {
-                "top_texts": [],
-                "top_scores": []
-            }
-        }
-    
-    print(f"Re-ranking {len(all_texts)} unique results...")
+    dense_score= state.get("meal_plan_dense", {}).get("confidence_score_list", [])
 
-    pairs = [(query, text) for text in all_texts]
+    w_sparse = 0.6
+    w_dense  = 0.4
 
-    scores = cross_encoder_model.predict(pairs)
-    ranked = sorted(
-        zip(scores, all_texts),
-        key=lambda x: x[0],
+    final_scores = [
+        w_sparse * s + w_dense * d
+        for s, d in zip(sparse_score, dense_score)
+    ]
+
+    ranked_docs = sorted(
+        enumerate(final_scores),
+        key=lambda x: x[1],
         reverse=True
     )
-    TOP_K = 5
-    top_texts = [text for _, text in ranked[:TOP_K]]
-    top_scores = [float(score) for score, _ in ranked[:TOP_K]]
-    
-    print(f"✓ Top {len(top_texts)} results after re-ranking:\n")
+    top_indices = [idx for idx, score in ranked_docs[:2]]
+    top_texts = []
+    for i in top_indices:
+        top_texts.append(sparse_texts[i])
+        top_texts.append(dense_texts[i])
 
-    for i, (score, text) in enumerate(zip(top_scores, top_texts), 1):
-        preview = text[:100] + "..." if len(text) > 100 else text
-        print(f"  {i}. Score: {score:.4f}")
-        print(f"     {preview}\n")
-    
     return {
         "cross_encoder_results": {
             "top_texts": top_texts,
-            "top_scores": top_scores
         }
     }
 
@@ -446,6 +436,7 @@ def response():
     return {
         "content":"The name's William Butcher, pro in disposing of Shitbag supes."
     }
+
 @router.post("/query/")
 def answer(payload:AnemiaPayload):
     question=payload.query

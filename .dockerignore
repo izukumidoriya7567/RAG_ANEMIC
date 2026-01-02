@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtual environments
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# Node / frontend
+node_modules/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# OS junk
+.DS_Store
+
+# Large files you don't need
+data/
+logs/
