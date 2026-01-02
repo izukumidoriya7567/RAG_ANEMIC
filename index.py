@@ -27,10 +27,10 @@ import re
 import os
 load_dotenv()
 
-router=FastAPI()
+app=FastAPI()
 
 # This setting is added for CORS Issue
-router.add_middleware(
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # or ["http://localhost:3000"]
     allow_credentials=True,
@@ -441,13 +441,13 @@ def search_and_answer(user_query: str):
     print("Meal_Plan_BM25",result_state["meal_plan_bm25"])
     return result_state
 
-@router.get("/")
+@app.get("/")
 def response():
     return {
         "content":"The name's William Butcher, pro in disposing of Shitbag supes."
     }
 
-@router.post("/query/")
+@app.post("/query/")
 def answer(payload:AnemiaPayload):
     question=payload.query
     answer=search_and_answer(question)
