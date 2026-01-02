@@ -7,7 +7,7 @@ Usage:
 1. First run: Automatically builds vocabulary if not found
 2. Subsequent runs: Uses cached vocabulary for fast searches
 """
-from fastembed import TextEmbedding
+from sentence_transformers import SentenceTransformer
 from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
@@ -67,7 +67,7 @@ qdrant_api_key=os.getenv("QDRANT_API_KEY")
 llm_api_key=os.getenv("GROQ_API_KEY")
 
 # INITIALIZE MODELS AND CLIENTS (Global - loaded once)
-embedding_model= TextEmbedding("BAAI/bge-small-en-v1.5")
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 
 llm = ChatGroq(
@@ -286,7 +286,7 @@ def meal_plan_dense_node(state: dict):
     print("🔎 DENSE EMBEDDING SEARCH")    
     try:
         # Encode query to dense vector
-        query_vector =next(embedding_model.embed([query]))
+        query_vector =embedding_model.encode(query)
         print("✓ Query encoded to dense vector")
         
         # Search the dense collection
